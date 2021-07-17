@@ -1,6 +1,6 @@
 :toc:
 
-= Schema DateTime
+= Schema Inputs
 
 Tests that the provided typeDefs return the correct schema.
 
@@ -8,9 +8,16 @@ Tests that the provided typeDefs return the correct schema.
 
 [source,graphql,schema=true]
 ----
+input NodeInput {
+    id: ID
+}
+
 type Movie {
     id: ID
-    datetime: DateTime
+}
+
+type Query {
+  name(input: NodeInput): String
 }
 ----
 
@@ -22,12 +29,9 @@ type Movie {
 {
   "queryOptionStyle": "INPUT_TYPE",
   "useWhereFilter": true,
-  "pluralizeFields": true,
-  "useTemporalScalars": true
+  "pluralizeFields": true
 }
 ----
-
-**Output**
 
 == Output
 
@@ -49,22 +53,17 @@ type DeleteInfo {
 }
 
 type Movie {
-  datetime: DateTime
   id: ID
 }
 
 type Mutation {
   createMovies(input: [MovieCreateInput!]!): CreateMoviesMutationResponse!
   deleteMovies(where: MovieWhere!): DeleteInfo!
-  updateMovies(update: MovieUpdateInput!, where: MovieWhere!): UpdateMoviesMutationResponse!
 }
 
 type Query {
   movies(options: MovieOptions, where: MovieWhere): [Movie!]!
-}
-
-type UpdateMoviesMutationResponse {
-  movies: [Movie!]!
+  name(input: NodeInput): String
 }
 
 enum RelationDirection {
@@ -80,11 +79,7 @@ enum SortDirection {
   DESC
 }
 
-"Scalar DateTime"
-scalar DateTime
-
 input MovieCreateInput {
-  datetime: DateTime
   id: ID
 }
 
@@ -99,27 +94,13 @@ input MovieOptions {
 
 "Fields to sort Movies by. The order in which sorts are applied is not guaranteed when specifying many fields in one MovieSort object."
 input MovieSort {
-  datetime: SortDirection
   id: SortDirection
-}
-
-input MovieUpdateInput {
-  datetime: DateTime
-  id: ID
 }
 
 input MovieWhere {
   AND: [MovieWhere!]
   NOT: [MovieWhere!]
   OR: [MovieWhere!]
-  datetime: DateTime
-  datetime_gt: DateTime
-  datetime_gte: DateTime
-  datetime_in: [DateTime]
-  datetime_lt: DateTime
-  datetime_lte: DateTime
-  datetime_not: DateTime
-  datetime_not_in: [DateTime]
   id: ID
   id_contains: ID
   id_ends_with: ID
@@ -135,6 +116,10 @@ input MovieWhere {
   id_not_in: [ID]
   id_not_starts_with: ID
   id_starts_with: ID
+}
+
+input NodeInput {
+  id: ID
 }
 
 ----

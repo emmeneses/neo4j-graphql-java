@@ -3,6 +3,7 @@ package org.neo4j.graphql.handler
 import graphql.language.Argument
 import graphql.language.ArrayValue
 import graphql.language.ObjectValue
+import graphql.language.Value
 import graphql.schema.GraphQLFieldDefinition
 import graphql.schema.GraphQLFieldsContainer
 import graphql.schema.GraphQLType
@@ -20,26 +21,34 @@ abstract class BaseDataFetcherForContainer(schemaConfig: SchemaConfig) : BaseDat
     val defaultFields: MutableMap<String, Any> = mutableMapOf()
 
     override fun initDataFetcher(fieldDefinition: GraphQLFieldDefinition, parentType: GraphQLType) {
-        type = fieldDefinition.type.inner() as? GraphQLFieldsContainer
-                ?: throw IllegalStateException("expect type of field ${parentType.name()}.${fieldDefinition.name} to be GraphQLFieldsContainer, but was ${fieldDefinition.type.name()}")
-        fieldDefinition
-            .arguments
-            .filterNot { listOf(FIRST, OFFSET, ORDER_BY, NATIVE_ID, OPTIONS).contains(it.name) }
+        type = getType(fieldDefinition, parentType)
+
+        fieldDefinition.arguments.excludeOptions(schemaConfig)
+            .filter { schemaConfig.queryOptionStyle == SchemaConfig.InputStyle.ARGUMENT_PER_FIELD || NATIVE_ID != it.name }
             .onEach { arg ->
                 if (arg.defaultValue != null) {
                     defaultFields[arg.name] = arg.defaultValue
                 }
             }
             .mapNotNull { type.getRelevantFieldDefinition(it.name) }
-            .forEach { field ->
-                val dynamicPrefix = field.dynamicPrefix()
-                propertyFields[field.name] = when {
-                    dynamicPrefix != null -> dynamicPrefixCallback(field, dynamicPrefix)
-                    field.isNeo4jType() || (schemaConfig.useTemporalScalars && field.isNeo4jTemporalType()) -> neo4jTypeCallback(field)
-                    else -> defaultCallback(field)
-                }
-            }
+            .forEach { field -> addPropertyField(field) }
     }
+
+    protected fun addPropertyField(field: GraphQLFieldDefinition) {
+        val dynamicPrefix = field.dynamicPrefix()
+        propertyFields[field.name] = when {
+            dynamicPrefix != null -> dynamicPrefixCallback(field, dynamicPrefix)
+            field.isNeo4jType() || (schemaConfig.useTemporalScalars && field.isNeo4jTemporalType()) -> neo4jTypeCallback(field)
+            else -> defaultCallback(field)
+        }
+    }
+
+    /**
+     * Extracts the type to be handled by this DataFetcher
+     */
+    protected open fun getType(fieldDefinition: GraphQLFieldDefinition, parentType: GraphQLType): GraphQLFieldsContainer =
+            fieldDefinition.type.inner() as? GraphQLFieldsContainer
+                    ?: throw IllegalStateException("expect type of field ${parentType.name()}.${fieldDefinition.name} to be GraphQLFieldsContainer, but was ${fieldDefinition.type.name()}")
 
     private fun defaultCallback(field: GraphQLFieldDefinition) =
             { value: Any ->
@@ -64,14 +73,20 @@ abstract class BaseDataFetcherForContainer(schemaConfig: SchemaConfig) : BaseDat
 
 
     protected fun properties(variable: String, arguments: List<Argument>): Array<Any> =
+            propertyAssignments(variable, arguments.map { it.name to it.value })
+
+    protected fun properties(variable: String, value: ObjectValue): Array<Any> =
+            propertyAssignments(variable, value.objectFields.map { it.name to it.value })
+
+    private fun propertyAssignments(variable: String, arguments: List<Pair<String, Value<*>>>) =
             preparePredicateArguments(arguments)
                 .flatMap { listOf(it.propertyName, it.toExpression(variable)) }
                 .toTypedArray()
 
-    private fun preparePredicateArguments(arguments: List<Argument>): List<PropertyAccessor> {
+    private fun preparePredicateArguments(arguments: List<Pair<String, Value<*>>>): List<PropertyAccessor> {
         val predicates = arguments
-            .mapNotNull { argument ->
-                propertyFields[argument.name]?.invoke(argument.value)?.let { argument.name to it }
+            .mapNotNull { (name, value) ->
+                propertyFields[name]?.invoke(value)?.let { name to it }
             }
             .toMap()
 

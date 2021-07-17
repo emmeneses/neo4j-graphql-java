@@ -87,8 +87,18 @@ class SchemaBuilder(
             handler.add(QueryHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry))
         }
         if (schemaConfig.mutation.enabled) {
+            if (schemaConfig.queryOptionStyle == SchemaConfig.InputStyle.INPUT_TYPE) {
+                handler += listOf(
+                        BatchCreateNodeHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),
+                        BatchUpdateHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),
+                )
+            } else {
+                handler += listOf(
+                        CreateTypeHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),
+                        MergeOrUpdateHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),
+                )
+            }
             handler += listOf(
-                    MergeOrUpdateHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),
                     DeleteHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),
                     CreateTypeHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),
                     DeleteRelationHandler.Factory(schemaConfig, typeDefinitionRegistry, neo4jTypeDefinitionRegistry),

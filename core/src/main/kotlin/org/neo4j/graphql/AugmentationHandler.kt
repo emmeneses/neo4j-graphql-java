@@ -45,6 +45,14 @@ abstract class AugmentationHandler(
             scalarFields: List<FieldDefinition>,
             nullableResult: Boolean,
             forceOptionalProvider: (field: FieldDefinition) -> Boolean = { false }
+    ): FieldDefinition.Builder =
+            buildFieldDefinition(prefix, resultType, nullableResult, getInputValueDefinitions(scalarFields, forceOptionalProvider))
+
+    protected fun buildFieldDefinition(
+            prefix: String,
+            resultType: ImplementingTypeDefinition<*>,
+            nullableResult: Boolean,
+            inputFields: List<InputValueDefinition>
     ): FieldDefinition.Builder {
         var type: Type<*> = TypeName(resultType.name)
         if (!nullableResult) {
@@ -52,13 +60,14 @@ abstract class AugmentationHandler(
         }
         return FieldDefinition.newFieldDefinition()
             .name("$prefix${resultType.name}")
-            .inputValueDefinitions(getInputValueDefinitions(scalarFields, forceOptionalProvider))
+            .inputValueDefinitions(inputFields)
             .type(type)
     }
 
     protected fun getInputValueDefinitions(
             relevantFields: List<FieldDefinition>,
-            forceOptionalProvider: (field: FieldDefinition) -> Boolean): List<InputValueDefinition> {
+            forceOptionalProvider: (field: FieldDefinition) -> Boolean
+    ): List<InputValueDefinition> {
         return relevantFields.map { field ->
             var type = getInputType(field.type)
             type = if (forceOptionalProvider(field)) {
@@ -239,7 +248,7 @@ abstract class AugmentationHandler(
         return orderingName
     }
 
-    private fun addInputType(inputName: String, relevantFields: List<InputValueDefinition>): InputObjectTypeDefinition {
+    protected fun addInputType(inputName: String, relevantFields: List<InputValueDefinition>): InputObjectTypeDefinition {
         var inputType = typeDefinitionRegistry.getType(inputName)?.unwrap()
         if (inputType != null) {
             return inputType as? InputObjectTypeDefinition
@@ -255,6 +264,28 @@ abstract class AugmentationHandler(
             .name(inputName)
             .inputValueDefinitions(relevantFields)
             .build()
+    }
+
+    protected fun addMutationResponse(prefix: String, type: TypeDefinition<*>): ObjectTypeDefinition {
+        val plural =  English.plural(type.name).capitalize()
+        return addObjectType("${prefix.capitalize()}${plural}MutationResponse", listOf(FieldDefinition.newFieldDefinition()
+            .name(plural.decapitalize())
+            .type(NonNullType(ListType(NonNullType(TypeName(type.name)))))
+            .build()))
+    }
+
+    protected fun addObjectType(name: String, fields: List<FieldDefinition>): ObjectTypeDefinition {
+        var type = typeDefinitionRegistry.getType(name)?.unwrap()
+        if (type != null) {
+            return type as? ObjectTypeDefinition
+                    ?: throw IllegalStateException("Type $name is already defined but not an object type")
+        }
+        type = ObjectTypeDefinition.newObjectTypeDefinition()
+            .name(name)
+            .fieldDefinitions(fields)
+            .build()
+        typeDefinitionRegistry.add(type)
+        return type
     }
 
     private fun getInputType(type: Type<*>): Type<*> {
@@ -280,6 +311,7 @@ abstract class AugmentationHandler(
     fun ImplementingTypeDefinition<*>.getFieldDefinition(name: String) = this.fieldDefinitions
         .filterNot { it.isIgnored() }
         .find { it.name == name }
+
     fun ImplementingTypeDefinition<*>.getIdField() = this.fieldDefinitions
         .filterNot { it.isIgnored() }
         .find { it.type.inner().isID() }
@@ -289,7 +321,7 @@ abstract class AugmentationHandler(
     fun Type<*>.isNeo4jType(): Boolean = name()
         ?.takeIf {
             !ScalarInfo.GRAPHQL_SPECIFICATION_SCALARS_DEFINITIONS.containsKey(it)
-                && it.startsWith("_Neo4j") // TODO remove this check by refactoring neo4j input types
+                    && it.startsWith("_Neo4j") // TODO remove this check by refactoring neo4j input types
         }
         ?.let { neo4jTypeDefinitionRegistry.getUnwrappedType(it) } != null
 
@@ -299,6 +331,7 @@ abstract class AugmentationHandler(
     fun FieldDefinition.isNativeId(): Boolean = name == ProjectionBase.NATIVE_ID
     fun FieldDefinition.dynamicPrefix(): String? =
             getDirectiveArgument(DirectiveConstants.DYNAMIC, DirectiveConstants.DYNAMIC_PREFIX, null)
+
     fun FieldDefinition.isRelationship(): Boolean =
             !type.inner().isNeo4jType() && type.resolve() is ImplementingTypeDefinition<*>
 
